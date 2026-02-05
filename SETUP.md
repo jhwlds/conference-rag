@@ -207,7 +207,8 @@ If your template includes `.github/workflows/deploy.yml`:
 
 **To verify deployment**:
 - Go to the **"Actions"** tab in your repo
-- You should see a "Deploy to GitHub Pages" workflow running
+- **If you see a banner saying "Workflows aren't being run"**, click **"I understand my workflows, go ahead and enable them"**
+- You should see a "Deploy to GitHub Pages" workflow running (if not, push a commit to trigger it)
 - When it completes (green checkmark), your site is live!
 
 ##### Method B: Manual Deployment (If no workflow file)
