@@ -279,6 +279,15 @@ See `DATA_LOADING.md` for detailed instructions.
 - Check you have credits in your OpenAI account
 - Ensure you're using a valid model name
 
+### GitHub Actions deployment failed
+If you see: *"Branch 'main' is not allowed to deploy to github-pages due to environment protection rules"*
+
+1. Go to your repo on GitHub
+2. Click **Settings** → **Environments** → **github-pages**
+3. Under "Deployment branches", click **Add deployment branch rule**
+4. Add `main` (or your default branch name)
+5. Save and re-run the workflow from the **Actions** tab
+
 ## Next Steps
 
 Students should:
