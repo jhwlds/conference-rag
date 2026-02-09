@@ -42,9 +42,6 @@ const loginBtn = document.getElementById('login-btn');
 const loginMessage = document.getElementById('login-message');
 const logoutBtn = document.getElementById('logout-btn');
 const userEmailSpan = document.getElementById('user-email');
-const questionInput = document.getElementById('question-input');
-const askBtn = document.getElementById('ask-btn');
-const chatMessages = document.getElementById('chat-messages');
 const loading = document.getElementById('loading');
 
 // Setup Banner Elements
@@ -56,6 +53,22 @@ const checkConfig = document.getElementById('check-config');
 const checkConnection = document.getElementById('check-connection');
 const checkRedirect = document.getElementById('check-redirect');
 
+// Search Panel Elements
+const keywordInput = document.getElementById('keyword-input');
+const keywordBtn = document.getElementById('keyword-btn');
+const keywordResults = document.getElementById('keyword-results');
+const keywordStatus = document.getElementById('keyword-status');
+
+const semanticInput = document.getElementById('semantic-input');
+const semanticBtn = document.getElementById('semantic-btn');
+const semanticResults = document.getElementById('semantic-results');
+const semanticStatus = document.getElementById('semantic-status');
+
+const ragInput = document.getElementById('rag-input');
+const ragBtn = document.getElementById('rag-btn');
+const ragResults = document.getElementById('rag-results');
+const ragStatus = document.getElementById('rag-status');
+
 // ============================================
 // SETUP BANNER DETECTION
 // ============================================
@@ -64,7 +77,6 @@ async function runSetupChecks() {
     const setupStatus = {
         configValid: false,
         connectionOk: false,
-        openaiKeySet: false,
         allGood: false
     };
 
@@ -77,34 +89,29 @@ async function runSetupChecks() {
     // Set setup guide link to GitHub repo (for better preview)
     const setupGuideLink = document.getElementById('setup-guide-link');
     if (setupGuideLink && currentUrl.includes('github.io')) {
-        // Extract username and repo from GitHub Pages URL
-        // Format: https://username.github.io/repo-name/
         const pathParts = window.location.pathname.split('/').filter(p => p);
         const repoName = pathParts[0] || 'conference-rag';
         const username = currentUrl.split('.github.io')[0].split('//')[1];
-        setupGuideLink.href = `https://github.com/${username}/${repoName}/blob/main/SETUP.md`;
-    } else {
-        // Fallback to local file for local development
-        setupGuideLink.href = 'SETUP.md';
+        setupGuideLink.href = `https://github.com/${username}/${repoName}/blob/main/README.md`;
+    } else if (setupGuideLink) {
+        setupGuideLink.href = 'README.md';
     }
 
-    // Set Supabase URL configuration link (extract project ID from URL)
+    // Set Supabase URL configuration link
     const supabaseConfigLink = document.getElementById('supabase-config-link');
     if (supabaseConfigLink && typeof SUPABASE_CONFIG !== 'undefined' && SUPABASE_CONFIG.url) {
         try {
             const supabaseUrl = new URL(SUPABASE_CONFIG.url);
-            const projectId = supabaseUrl.hostname.split('.')[0]; // Extract subdomain
+            const projectId = supabaseUrl.hostname.split('.')[0];
             supabaseConfigLink.href = `https://supabase.com/dashboard/project/${projectId}/auth/url-configuration`;
         } catch (err) {
-            // If URL parsing fails, hide the link
             supabaseConfigLink.style.display = 'none';
         }
-    } else {
-        // Hide link if no valid config
-        if (supabaseConfigLink) supabaseConfigLink.style.display = 'none';
+    } else if (supabaseConfigLink) {
+        supabaseConfigLink.style.display = 'none';
     }
 
-    // Check 1: Config has real values (not placeholders)
+    // Check 1: Config has real values
     if (!configIsValid) {
         updateCheckItem(checkConfig, 'error', '❌', 'Configure Supabase credentials in config.js');
         updateCheckItem(checkConnection, 'warning', '⏳', 'Waiting for config...');
@@ -112,7 +119,7 @@ async function runSetupChecks() {
         updateCheckItem(checkConfig, 'success', '✅', 'Supabase credentials configured');
         setupStatus.configValid = true;
 
-        // Check 2: Supabase connection works
+        // Check 2: Supabase connection
         if (supabaseClient) {
             try {
                 const { data, error } = await supabaseClient.auth.getSession();
@@ -130,13 +137,11 @@ async function runSetupChecks() {
         }
     }
 
-    // Check 3: Redirect URL (manual - just show warning/reminder)
+    // Check 3: Redirect URL reminder
     updateCheckItem(checkRedirect, 'warning', '⚠️', `Add ${currentUrl} to Supabase redirect URLs`);
 
-    // Determine if we should show the banner
+    // Show/hide banner
     setupStatus.allGood = setupStatus.configValid && setupStatus.connectionOk;
-
-    // Show banner if something needs attention, unless user dismissed it
     const bannerDismissed = sessionStorage.getItem('setup_banner_dismissed');
     if (setupBanner) {
         if (!setupStatus.allGood && !bannerDismissed) {
@@ -176,7 +181,7 @@ if (copyUrlBtn) {
     });
 }
 
-// Dismiss setup banner (for this session)
+// Dismiss setup banner
 if (closeSetupBannerBtn) {
     closeSetupBannerBtn.addEventListener('click', () => {
         if (setupBanner) {
@@ -190,9 +195,7 @@ if (closeSetupBannerBtn) {
 // AUTHENTICATION
 // ============================================
 
-// Check for existing session on page load
 async function checkSession() {
-    // If Supabase isn't configured, just show the login screen (with banner)
     if (!supabaseClient) {
         showLogin();
         return;
@@ -275,6 +278,8 @@ function showApp(user) {
     if (loginScreen) loginScreen.classList.add('hidden');
     if (appScreen) appScreen.classList.remove('hidden');
     if (userEmailSpan) userEmailSpan.textContent = user.email;
+    // Check search readiness when user logs in
+    checkSearchReadiness();
 }
 
 function showMessage(text, type) {
@@ -296,52 +301,272 @@ function showLoading(show) {
 }
 
 // ============================================
-// RAG QUERY FUNCTIONALITY
+// SEARCH READINESS DETECTION
 // ============================================
 
-async function askQuestion() {
-    if (!supabaseClient) {
-        addMessage('Please configure Supabase first (see Setup Guide)', 'error');
-        return;
+async function checkSearchReadiness() {
+    if (!supabaseClient) return;
+
+    // Check 1: Does the talks table have data? (keyword search)
+    try {
+        const { count, error } = await supabaseClient
+            .from('talks')
+            .select('*', { count: 'exact', head: true });
+
+        if (!error && count > 0) {
+            setSearchReady('keyword', true);
+        } else {
+            setSearchReady('keyword', false);
+        }
+    } catch (err) {
+        console.log('Keyword readiness check failed:', err.message);
+        setSearchReady('keyword', false);
     }
 
-    const question = questionInput ? questionInput.value.trim() : '';
+    // Check 2: Do sentences have embeddings? (semantic search)
+    try {
+        const { data, error } = await supabaseClient
+            .from('sentences')
+            .select('embedding')
+            .not('embedding', 'is', null)
+            .limit(1);
 
-    if (!question) {
-        return;
+        const hasEmbeddings = !error && data && data.length > 0;
+
+        if (hasEmbeddings) {
+            // Also check if embed-question edge function responds
+            try {
+                const response = await fetch(`${SUPABASE_CONFIG.url}/functions/v1/embed-question`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${SUPABASE_CONFIG.anonKey}`
+                    },
+                    body: JSON.stringify({ question: 'test' })
+                });
+                setSearchReady('semantic', response.ok);
+            } catch {
+                setSearchReady('semantic', false);
+            }
+        } else {
+            setSearchReady('semantic', false);
+        }
+    } catch (err) {
+        console.log('Semantic readiness check failed:', err.message);
+        setSearchReady('semantic', false);
     }
 
-    // Add user question to chat
-    addMessage(question, 'user');
-    if (questionInput) questionInput.value = '';
+    // Check 3: Does generate-answer edge function respond? (RAG)
+    try {
+        const response = await fetch(`${SUPABASE_CONFIG.url}/functions/v1/generate-answer`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${SUPABASE_CONFIG.anonKey}`
+            },
+            body: JSON.stringify({ question: 'test', context_talks: [] })
+        });
+        // Even an error response (like 400) from the function means it's deployed
+        setSearchReady('rag', response.status !== 404);
+    } catch {
+        setSearchReady('rag', false);
+    }
+}
+
+function setSearchReady(type, ready) {
+    const statusEl = document.getElementById(`${type}-status`);
+    const inputEl = document.getElementById(`${type}-input`);
+    const btnEl = document.getElementById(`${type}-btn`);
+    const panelEl = document.getElementById(`${type}-panel`);
+
+    if (statusEl) {
+        if (ready) {
+            statusEl.textContent = '🟢 Ready';
+            statusEl.className = 'status-badge ready';
+        } else {
+            statusEl.textContent = '🔴 Not Ready';
+            statusEl.className = 'status-badge not-ready';
+        }
+    }
+
+    if (inputEl) inputEl.disabled = !ready;
+    if (btnEl) btnEl.disabled = !ready;
+
+    if (panelEl) {
+        if (ready) {
+            panelEl.classList.add('panel-ready');
+            panelEl.classList.remove('panel-not-ready');
+        } else {
+            panelEl.classList.add('panel-not-ready');
+            panelEl.classList.remove('panel-ready');
+        }
+    }
+}
+
+// ============================================
+// KEYWORD SEARCH
+// ============================================
+
+async function keywordSearch() {
+    const query = keywordInput ? keywordInput.value.trim() : '';
+    if (!query || !supabaseClient) return;
 
     showLoading(true);
+    clearResults('keyword');
 
     try {
-        // Step 1: Get embedding via Edge Function (API key stays server-side)
-        const embedding = await getEmbedding(question);
+        // Search sentences that contain the keyword (case-insensitive)
+        const { data, error } = await supabaseClient
+            .from('sentences')
+            .select(`
+                text,
+                talk_id,
+                talks (
+                    title,
+                    speaker
+                )
+            `)
+            .ilike('text', `%${query}%`)
+            .limit(20);
 
-        // Step 2: Search for similar sentences using pgvector
-        const results = await searchSentences(embedding);
+        if (error) throw new Error(`Search failed: ${error.message}`);
 
-        // Step 3: Group results by talk and get top talks
-        const topTalks = groupByTalk(results);
+        if (!data || data.length === 0) {
+            showResults('keyword', '<div class="no-results">No results found. Try different keywords.</div>');
+            return;
+        }
 
-        // Step 4: Generate answer via Edge Function
-        const answer = await generateAnswer(question, topTalks);
+        // Group by talk
+        const talks = {};
+        for (const row of data) {
+            const talkId = row.talk_id;
+            if (!talks[talkId]) {
+                talks[talkId] = {
+                    title: row.talks?.title || 'Unknown Talk',
+                    speaker: row.talks?.speaker || 'Unknown Speaker',
+                    sentences: []
+                };
+            }
+            talks[talkId].sentences.push(highlightKeyword(row.text, query));
+        }
 
-        // Add AI response to chat
-        addMessage(answer, 'assistant');
+        let html = '';
+        for (const talk of Object.values(talks)) {
+            html += `<div class="result-card">
+                <div class="result-title">${escapeHtml(talk.title)}</div>
+                <div class="result-speaker">by ${escapeHtml(talk.speaker)}</div>
+                <div class="result-sentences">${talk.sentences.slice(0, 3).join('<br>')}</div>
+            </div>`;
+        }
+        showResults('keyword', html);
 
     } catch (error) {
-        console.error('Error:', error);
-        addMessage(`Error: ${error.message}`, 'error');
+        showResults('keyword', `<div class="result-error">Error: ${escapeHtml(error.message)}</div>`);
     } finally {
         showLoading(false);
     }
 }
 
-// Get embedding via Edge Function (OpenAI key stays server-side)
+function highlightKeyword(text, keyword) {
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${escaped})`, 'gi');
+    return escapeHtml(text).replace(regex, '<mark>$1</mark>');
+}
+
+// ============================================
+// SEMANTIC SEARCH
+// ============================================
+
+async function semanticSearch() {
+    const query = semanticInput ? semanticInput.value.trim() : '';
+    if (!query || !supabaseClient) return;
+
+    showLoading(true);
+    clearResults('semantic');
+
+    try {
+        // Step 1: Get embedding
+        const embedding = await getEmbedding(query);
+
+        // Step 2: Search for similar sentences
+        const results = await searchSentences(embedding);
+
+        if (!results || results.length === 0) {
+            showResults('semantic', '<div class="no-results">No similar content found. Try a different query.</div>');
+            return;
+        }
+
+        // Step 3: Group by talk
+        const topTalks = groupByTalk(results);
+
+        let html = '';
+        for (const talk of topTalks) {
+            html += `<div class="result-card">
+                <div class="result-title">${escapeHtml(talk.title)}</div>
+                <div class="result-speaker">by ${escapeHtml(talk.speaker)}</div>
+                <div class="result-sentences">${escapeHtml(talk.text)}</div>
+            </div>`;
+        }
+        showResults('semantic', html);
+
+    } catch (error) {
+        showResults('semantic', `<div class="result-error">Error: ${escapeHtml(error.message)}</div>`);
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ============================================
+// RAG (ASK A QUESTION)
+// ============================================
+
+async function askQuestion() {
+    const question = ragInput ? ragInput.value.trim() : '';
+    if (!question || !supabaseClient) return;
+
+    showLoading(true);
+    clearResults('rag');
+
+    try {
+        // Step 1: Get embedding
+        const embedding = await getEmbedding(question);
+
+        // Step 2: Search for similar sentences
+        const results = await searchSentences(embedding);
+
+        // Step 3: Group by talk
+        const topTalks = groupByTalk(results);
+
+        // Step 4: Generate answer
+        const answer = await generateAnswer(question, topTalks);
+
+        let html = `<div class="result-card rag-answer">
+            <div class="result-title">AI Answer</div>
+            <div class="result-sentences">${escapeHtml(answer)}</div>
+        </div>`;
+
+        // Show source talks
+        html += '<div class="result-sources"><strong>Sources:</strong></div>';
+        for (const talk of topTalks) {
+            html += `<div class="result-card result-source">
+                <div class="result-title">${escapeHtml(talk.title)}</div>
+                <div class="result-speaker">by ${escapeHtml(talk.speaker)}</div>
+            </div>`;
+        }
+        showResults('rag', html);
+
+    } catch (error) {
+        showResults('rag', `<div class="result-error">Error: ${escapeHtml(error.message)}</div>`);
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ============================================
+// SHARED SEARCH UTILITIES
+// ============================================
+
+// Get embedding via Edge Function
 async function getEmbedding(text) {
     const response = await fetch(`${SUPABASE_CONFIG.url}/functions/v1/embed-question`, {
         method: 'POST',
@@ -361,11 +586,9 @@ async function getEmbedding(text) {
     return data.embedding;
 }
 
-// Search sentences using Supabase vector similarity
+// Search sentences using vector similarity
 async function searchSentences(embedding) {
-    if (!supabaseClient) {
-        throw new Error('Supabase not configured');
-    }
+    if (!supabaseClient) throw new Error('Supabase not configured');
 
     const { data, error } = await supabaseClient.rpc('match_sentences', {
         query_embedding: embedding,
@@ -373,14 +596,11 @@ async function searchSentences(embedding) {
         match_count: 20
     });
 
-    if (error) {
-        throw new Error(`Database search failed: ${error.message}`);
-    }
-
+    if (error) throw new Error(`Database search failed: ${error.message}`);
     return data;
 }
 
-// Group search results by talk and return top 3 talks with their sentences
+// Group search results by talk
 function groupByTalk(sentences) {
     const talkMap = {};
 
@@ -397,7 +617,6 @@ function groupByTalk(sentences) {
         talkMap[sent.talk_id].totalSimilarity += sent.similarity;
     }
 
-    // Sort by number of matching sentences (more matches = more relevant)
     return Object.values(talkMap)
         .sort((a, b) => b.sentences.length - a.sentences.length)
         .slice(0, 3)
@@ -408,7 +627,7 @@ function groupByTalk(sentences) {
         }));
 }
 
-// Generate answer via Edge Function (OpenAI key stays server-side)
+// Generate answer via Edge Function
 async function generateAnswer(question, contextTalks) {
     const response = await fetch(`${SUPABASE_CONFIG.url}/functions/v1/generate-answer`, {
         method: 'POST',
@@ -431,37 +650,54 @@ async function generateAnswer(question, contextTalks) {
     return data.answer;
 }
 
-// Add message to chat
-function addMessage(text, type) {
-    if (!chatMessages) return;
+// ============================================
+// RESULTS DISPLAY HELPERS
+// ============================================
 
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${type}`;
-    messageDiv.textContent = text;
-    chatMessages.appendChild(messageDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+function showResults(type, html) {
+    const el = document.getElementById(`${type}-results`);
+    if (el) el.innerHTML = html;
 }
 
-// Event listeners
-if (askBtn) {
-    askBtn.addEventListener('click', askQuestion);
+function clearResults(type) {
+    const el = document.getElementById(`${type}-results`);
+    if (el) el.innerHTML = '<div class="searching">Searching...</div>';
 }
 
-if (questionInput) {
-    questionInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            askQuestion();
-        }
-    });
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
+
+// ============================================
+// EVENT LISTENERS
+// ============================================
+
+// Keyword search
+if (keywordBtn) keywordBtn.addEventListener('click', keywordSearch);
+if (keywordInput) keywordInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') keywordSearch();
+});
+
+// Semantic search
+if (semanticBtn) semanticBtn.addEventListener('click', semanticSearch);
+if (semanticInput) semanticInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') semanticSearch();
+});
+
+// RAG search
+if (ragBtn) ragBtn.addEventListener('click', askQuestion);
+if (ragInput) ragInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') askQuestion();
+});
 
 // ============================================
 // INITIALIZE APP
 // ============================================
 
-// Run setup checks on page load (this runs immediately, before Supabase)
+// Run setup checks on page load
 runSetupChecks();
 
 // Check authentication session
 checkSession();
-
