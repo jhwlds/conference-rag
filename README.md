@@ -135,3 +135,8 @@ Educational use only. Conference talk content is used under fair use for educati
 ---
 
 Built with ❤️ for CS 452
+
+
+Example screenshot (the idea is different stages will become available as you add data and capabilities to the system):
+<img width="2164" height="1521" alt="image" src="https://github.com/user-attachments/assets/6312ceef-630a-4fdb-9319-8a3e374c8386" />
+
