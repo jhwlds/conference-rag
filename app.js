@@ -309,11 +309,12 @@ async function checkSearchReadiness() {
 
     // Check 1: Does the database have data? (keyword search)
     try {
-        const { count, error } = await supabaseClient
+        const { data, error } = await supabaseClient
             .from('sentence_embeddings')
-            .select('id', { count: 'exact', head: true });
+            .select('id')
+            .limit(1);
 
-        if (!error && count > 0) {
+        if (!error && data && data.length > 0) {
             setSearchReady('keyword', true);
         } else {
             setSearchReady('keyword', false);
