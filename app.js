@@ -307,11 +307,11 @@ function showLoading(show) {
 async function checkSearchReadiness() {
     if (!supabaseClient) return;
 
-    // Check 1: Does the talks table have data? (keyword search)
+    // Check 1: Does the database have data? (keyword search)
     try {
         const { count, error } = await supabaseClient
-            .from('talks')
-            .select('*', { count: 'exact', head: true });
+            .from('sentence_embeddings')
+            .select('id', { count: 'exact', head: true });
 
         if (!error && count > 0) {
             setSearchReady('keyword', true);
@@ -326,8 +326,8 @@ async function checkSearchReadiness() {
     // Check 2: Do sentences have embeddings? (semantic search)
     try {
         const { data, error } = await supabaseClient
-            .from('sentences')
-            .select('embedding')
+            .from('sentence_embeddings')
+            .select('id')
             .not('embedding', 'is', null)
             .limit(1);
 
@@ -417,15 +417,8 @@ async function keywordSearch() {
     try {
         // Search sentences that contain the keyword (case-insensitive)
         const { data, error } = await supabaseClient
-            .from('sentences')
-            .select(`
-                text,
-                talk_id,
-                talks (
-                    title,
-                    speaker
-                )
-            `)
+            .from('sentence_embeddings')
+            .select('text,talk_id,title,speaker')
             .ilike('text', `%${query}%`)
             .limit(20);
 
@@ -442,8 +435,8 @@ async function keywordSearch() {
             const talkId = row.talk_id;
             if (!talks[talkId]) {
                 talks[talkId] = {
-                    title: row.talks?.title || 'Unknown Talk',
-                    speaker: row.talks?.speaker || 'Unknown Speaker',
+                    title: row.title || 'Unknown Talk',
+                    speaker: row.speaker || 'Unknown Speaker',
                     sentences: []
                 };
             }
